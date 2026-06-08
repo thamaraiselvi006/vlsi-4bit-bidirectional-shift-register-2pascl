@@ -1,0 +1,249 @@
+module adiabatic_buffer(
+    input in,
+    input clk,
+    output reg out
+);
+always @(posedge clk)
+begin
+    out <= in;
+end
+endmodule
+
+module adiabatic_not(
+    input in,
+    input clk,
+    output reg out
+);
+always @(posedge clk)
+begin
+    out <= ~in;
+end
+endmodule
+
+module adiabatic_and(
+    input a,
+    input b,
+    input clk,
+    output reg out
+);
+always @(posedge clk)
+begin
+    out <= a & b;
+end
+endmodule
+
+module adiabatic_or(
+    input a,
+    input b,
+    input clk,
+    output reg out
+);
+always @(posedge clk)
+begin
+    out <= a | b;
+end
+endmodule
+
+module adiabatic_mux(
+    input d0,
+    input d1,
+    input sel,
+    input clk,
+    output reg out
+);
+always @(posedge clk)
+begin
+    if (sel == 0)
+        out <= d0;
+    else
+        out <= d1;
+end
+endmodule
+
+module adiabatic_dff(
+    input d,
+    input clk,
+    input reset,
+    output reg q,
+    output reg qn
+);
+always @(posedge clk or posedge reset)
+begin
+    if (reset)
+    begin
+        q  <= 1'b0;
+        qn <= 1'b1;
+    end
+    else
+    begin
+        q  <= d;
+        qn <= ~d;
+    end
+end
+endmodule
+
+module shift_register_bit(
+    input clk,
+    input reset,
+    input mode,
+    input left_in,
+    input right_in,
+    output q,
+    output qn
+);
+
+wire mux_out;
+
+adiabatic_mux mux_inst(
+    .d0(right_in),
+    .d1(left_in),
+    .sel(mode),
+    .clk(clk),
+    .out(mux_out)
+);
+
+adiabatic_dff dff_inst(
+    .d(mux_out),
+    .clk(clk),
+    .reset(reset),
+    .q(q),
+    .qn(qn)
+);
+
+endmodule
+
+module shift_register_4bit(
+    input clk,
+    input reset,
+    input mode,
+    input serial_in_left,
+    input serial_in_right,
+    output [3:0] q,
+    output [3:0] qn
+);
+
+wire [3:0] q_wire;
+wire [3:0] qn_wire;
+
+shift_register_bit bit3(
+    .clk(clk),
+    .reset(reset),
+    .mode(mode),
+    .left_in(serial_in_left),
+    .right_in(q_wire[2]),
+    .q(q_wire[3]),
+    .qn(qn_wire[3])
+);
+
+shift_register_bit bit2(
+    .clk(clk),
+    .reset(reset),
+    .mode(mode),
+    .left_in(q_wire[3]),
+    .right_in(q_wire[1]),
+    .q(q_wire[2]),
+    .qn(qn_wire[2])
+);
+
+shift_register_bit bit1(
+    .clk(clk),
+    .reset(reset),
+    .mode(mode),
+    .left_in(q_wire[2]),
+    .right_in(q_wire[0]),
+    .q(q_wire[1]),
+    .qn(qn_wire[1])
+);
+
+shift_register_bit bit0(
+    .clk(clk),
+    .reset(reset),
+    .mode(mode),
+    .left_in(q_wire[1]),
+    .right_in(serial_in_right),
+    .q(q_wire[0]),
+    .qn(qn_wire[0])
+);
+
+assign q  = q_wire;
+assign qn = qn_wire;
+
+endmodule
+
+module shift_register_tb;
+
+reg clk;
+reg reset;
+reg mode;
+reg serial_in_left;
+reg serial_in_right;
+
+wire [3:0] q;
+wire [3:0] qn;
+
+shift_register_4bit uut(
+    .clk(clk),
+    .reset(reset),
+    .mode(mode),
+    .serial_in_left(serial_in_left),
+    .serial_in_right(serial_in_right),
+    .q(q),
+    .qn(qn)
+);
+
+always #5 clk = ~clk;
+
+initial
+begin
+    clk = 0;
+    reset = 1;
+    mode = 0;
+    serial_in_left = 0;
+    serial_in_right = 0;
+
+    #10 reset = 0;
+
+    $display("=== RIGHT SHIFT (mode=0) ===");
+    mode = 0;
+    serial_in_right = 1;
+    #10;
+    serial_in_right = 0;
+    #10;
+    serial_in_right = 1;
+    #10;
+    serial_in_right = 1;
+    #10;
+
+    $display("=== LEFT SHIFT (mode=1) ===");
+    mode = 1;
+    serial_in_left = 1;
+    #10;
+    serial_in_left = 0;
+    #10;
+    serial_in_left = 1;
+    #10;
+    serial_in_left = 0;
+    #10;
+
+    $display("=== RESET TEST ===");
+    reset = 1;
+    #10;
+    reset = 0;
+    #10;
+
+    $finish;
+end
+
+initial
+begin
+    $monitor("Time=%0t | Reset=%b | Mode=%b | Q=%b | QN=%b",
+              $time, reset, mode, q, qn);
+end
+
+initial
+begin
+    $dumpfile("shift_register.vcd");
+    $dumpvars(0, shift_register_tb);
+end
+
+endmodule
